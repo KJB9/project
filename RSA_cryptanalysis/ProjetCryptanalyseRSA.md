@@ -1,0 +1,226 @@
+```python
+def GenRSA(k,delta):
+    p=ZZ.random_element(2^(k-1),2^k)      # On génère un nombre p de k bits dans Z.
+    while not p.is_pseudoprime():         # On ne s'arrête que lorsque p est declaré pseudo premier.
+        p=ZZ.random_element(2^(k-1),2^k)
+        
+    q=ZZ.random_element(2^(k-1),2^k)      # On génère un nombre q de k bits dans Z.
+    while not q.is_pseudoprime():         # On ne s'arrête que lorsque q est déclaré pseudo premier.
+        q=ZZ.random_element(2^(k-1),2^k)      
+        
+    N=p*q                                 # On calcule N=p*q.
+    phi_N=(p-1)*(q-1)                     # On calcule phi(N)=(p-1)*(q-1).
+    
+    d=floor(N^delta)                      # On initialise d à partie entière inférieur de N^delta
+    while gcd(d,phi_N)!=1:                # On calcule le plus grand entier d < N^delta tel que pgcd(d,phi(N))=1.
+        d-=1                  
+    
+    e=xgcd(d,phi_N)[1]%phi_N              # On calcule e inverse de d modulo phi(N).
+    
+    return N,p,q,e,d
+
+def Substitution_of_xy(Polynome):
+    f=0
+    for i in Polynome:                    # On parcours tous les monômes de notre polynôme entré en paramètre.
+        deg_xy=0                          # On initialise l'exposant de xy à 0
+        monome=i[1]                       # On recupère le monôme 
+        while monome.gcd(x*y)==x*y:       # On test si notre monôme contient xy.
+            deg_xy+=1                     # On recupère l'exposant de xy dans chaque monôme
+            monome/=x*y                   # On retranche les occurences de xy.
+        f+=i[0]*(u-1)^deg_xy*monome       # On substitue xy par u-1 dans chaque monôme.
+        
+    return f
+
+def Base(m,t,N,e,delta):  
+    M1=[Poly(x^(k-i)*u^i) for k in range(m+1) for i in range(k+1)]   # On calclule les monômes du premier ensemble de M.
+    m1=[(k,i) for k in range(m+1) for i in range(k+1)]               # On stocke les couples (k,i) associé à chaque monôme de M.
+
+    M2=[Poly(y^j*u^k) for j in range(1,t+1) for k in range(j*floor(m/t),m+1)]  #On calcule les monômes du second ensemble de M
+    m2=[(j,k) for j in range(1,t+1) for k in range(j*floor(m/t),m+1)]          # On stocke les couples (j,k) associé.
+
+    M=M1+M2               # On génère tous l'ensemble M.
+    degM=m1+m2            # On stocke les couples (k,i) et (j,k) associé à chaque monôme de M.  
+    l=len(M)
+    
+    A=N+1
+    X=ceil(e^delta)
+    Y=ceil(e^(1/2))
+    U=1+X*Y
+
+    G={(k+i,k):Poly(x^i*(u+A*x)^k*e^(m-k)) for k in range(m+1) for i in range(m-k+1)} # On calcule et et stocke les polynômes
+                            # gi,k et les couples (k+i,k) associés au monôme de plus haut degré de gi,k dans un dictionnaire.
+    
+    H={(j,k):Substitution_of_xy(Poly(y^j*(u+A*x)^k*e^(m-k))) for j in range(1,t+1) for k in range(j*floor(m/t),m+1)}# On calcule
+        # et soctke les polynomes hj,k et les couples (j,k) associés au monômes de plus haut degré de hj,k dans un dictionnaire.
+
+    B=Matrix(ZZ,l,l)                                       # On génère la matrice de la base du réseau. 
+    for li in range(l):                                    # On parcourt les lignes de la matrices B.
+        if li<len(m1):                                     # On manipule les premières de notre matrice. 
+            g=G[degM[li]](x*X,0,u*U)                       # On sélectionne le polynôme gi,k(uU,xX) correspondant à la ligne li.  
+            for ci in range(li+1):                         # On parcourt les colonnes de la ligne li de la matrice du réseau.
+                k,i=degM[ci]                               # On recupère le couple (k,i) du monôme de M sur la colonne ci.
+                B[li,ci]=g.monomial_coefficient(x^(k-i)*u^i)# On met à la ligne li, colonne ci le coefficient de x^(k-i)u^i 
+        else:
+            h=Poly(H[degM[li]])(x*X,y*Y,u*U)         # On sélectionne le polynôme hj,k(uU,xX,yY) correspondant à la ligne li.
+            for ci in range(li+1):                   # On parcourt les colonnes de la ligne li de la matrice du réseau. 
+                if ci<len(m1):                             
+                    k,i=degM[ci]                     # On recupère le couple (k,i) associé au monôme de M sur la colonne ci. 
+                    B[li,ci]=h.monomial_coefficient(x^(k-i)*u^i)# On met à la ligne li, colonne ci le coefficient de x^(k-i)u^i 
+                else:
+                    j,k=degM[ci]                          # On recupère le couple (j,k) associé au monôme de M sur la colonne ci 
+                    B[li,ci]=h.monomial_coefficient(y^j*u^k) # On à la ligne li, colonne ci le coefficient de y^j*u^k.
+    return M,B
+
+def Substitution_of_u(Polynome):
+    f=0
+    for i in Polynome:                                # On parcours tous les monômes du polynôme entré en paramètre.
+        deg_u=0                                       # On inititialise l'exposant de u à 0. 
+        monome=i[1]                                   # On recupère le monôme.
+        while monome.gcd(u)==u:                       # On test si notre monome contient u.
+            deg_u+=1                                  # On recupère l'exposant de u dans chaque monômes.
+            monome/=u                                 # On retranche u dans chaque monôme.
+        f+=i[0]*(1+x*y)^deg_u*monome                  # On substitue u par 1+xy.
+    return f
+
+def Attaque(m,N,e,delta):
+    t=floor(m*(1-2*delta))
+    M,B=Base(m,t,N,e,delta)                    # On génère la base du réseau.
+
+    X=ceil(e^delta)
+    Y=ceil(e^(1/2))
+    U=1+X*Y
+
+    B=B.LLL()                                  # On applique LLL à la base du réseau.
+    l=len(M)
+
+    P=0
+    for i in range(l):                         # On parcours tous les élements de M.
+        P+=Substitution_of_u(M[i])             # On calcule P sommes des monômes de M dans lequel on substitue u par 1+xy
+    L=Poly(P).monomials()                      # On recupère un tableau contenant de nouveau monôme en fcontion de x et y
+    L.reverse()
+    w=len(L)
+
+    for i in range(l):                         # On parcours les lignes de la matrice B.
+        for j in range(i+1,l):                 # On parcours les lignes de la matrice B à partir de la ligne i+1.
+            b1=B.row(i)                        # b1 est le vecteur formé des coefficients de la ligne i.
+            b2=B.row(j)                        # b2 est le vecteuur formé des coefficients de la ligne j.
+            P1,P2=0,0                          # On initialise les polynôomes P1 et P2 à 0.
+
+            for k in range(l):                 # On parcours les coefficients des vecteurs b1 et b2.
+                P1+=(b1[k]/M[k](X,Y,U))*M[k]   # On retranche les bornes X,Y,U dans les coefficients de b1 et on calcule P1
+                P2+=(b2[k]/M[k](X,Y,U))*M[k]   # On retranche les bornes X,Y,U dans les coefficients de b2 et on calcules P2 
+        
+            P1=Poly(Substitution_of_u(P1))     # On substitue u par 1+xy dans le polynôme P1
+            P2=Poly(Substitution_of_u(P2))     # On substitue u par 1+xy dans le polynôme P2
+        
+            if gcd(P1,P2)==1:                  # On s'assure que pgcd(P1,P2)=1 pour ne pas que leur resultant soit nul. 
+                Q1=P1(x*X,y*Y,0)               # On calcule P1(xX,yY).
+                Q2=P2(x*X,y*Y,0)               # On calcules P2(xX,yY).
+            
+                v1=vector(ZZ,w,[Q1.monomial_coefficient(L[k]) for k in range(w)]) # On calcule les vecteurs associé P1(xX,yY).
+                v2=vector(ZZ,w,[Q2.monomial_coefficient(L[k]) for k in range(w)]) # On calcule les vecteurs associé P2(xX,yY).
+
+                if v1.norm()<e^m/sqrt(w) and v2.norm()<e^m/sqrt(w): # On vérifie que P1 et P2 satisfont la condition  
+                                                                    #||P1(xX,yY)||<e^m/sqrt(w) et ||P2(xX,yY)||<e^m/sqrt(w).
+                    R=Poly1(P1.resultant(P2,y))   # On calcule le resultant en y.
+                    racine_R=R.roots()            # On calcules racines du resultant.
+
+                    for k in racine_R:            # On parcourt les racines de notre resultant.
+                        Q2=P2(k[0],x,0)           # On calcule P2(x0,y).
+                        r= Q2.roots()             # On calcule la racine y0 de P2(x0,y).
+
+                        if r!=[]:                 # Si la racine y0 existe on calcule d, p et q
+                            x0,y0=k[0],r[0][0]    # On recupère la racine commune x0,y0 de P1 et P2
+                            d=xgcd(e,x0)[1]       # On calcule l'exposant privée d de RSA tel que e*d+k*x0=1.
+                            k=1
+                            while d+k*x0<N^delta: # On cherche le plus grand k tel que d+k*x0<N^delta.
+                                k+=1              
+                            d+=k*x0               # Notre exposant privée final est d+k*x0
+                            
+                            P=Poly1(x^2+y0*x+N)   # On calcule le polynôme P=x^2+y0*x+N.
+                            racine=P.roots()      # On calcule les racines de P=x^2+y0*x+N
+                            p=racine[0][0]        # p égale à la première racine de P=x^2+y0*x+N
+                            q=racine[1][0]        # q égale à la deuxième racine de P=x^2+y0*x+N
+                            return d,p,q
+    return 0
+        
+Poly.<x,y,u>=PolynomialRing(ZZ)  
+Poly1.<x>=PolynomialRing(ZZ)
+
+# Test pour pour k=1024 et delta=0.2
+N,p,q,e,d=GenRSA(1024,0.2)
+Solution=Attaque(2,N,e,0.2)
+
+print("d==d1 :",d==Solution[0])
+print("delta =",0.2, "et m =",2)
+print("d = {}".format(d),"\n")
+print("p = {}".format(p),"\n")
+print("q = {}".format(q),"\n")
+print("N = {}".format(N),"\n")
+
+print("d1 = {}".format(Solution[0]),"\n")
+print("p1 = {}".format(Solution[1]),"\n")
+print("q1 = {}".format(Solution[2]),"\n")
+
+# Test pour k=1024 et delta=0.25
+N,p,q,e,d=GenRSA(1024,0.25)
+Solution=Attaque(3,N,e,0.25)
+
+print("d==d1 :",d==Solution[0])
+print("delta =",0.25, "et m =",3)
+print("d = {}".format(d),"\n")
+print("p = {}".format(p),"\n")
+print("q = {}".format(q),"\n")
+print("N = {}".format(N),"\n")
+
+print("d1 = {}".format(Solution[0]),"\n")
+print("p1 = {}".format(Solution[1]),"\n")
+print("q1 = {}".format(Solution[2]),"\n")
+
+```
+
+    d==d1 : True
+    delta = 0.200000000000000 et m = 2
+    d = 1729133842483701669756218369210524257204835202594041826409124743332490268033797914037866619729965816628303771662621217914873 
+    
+    p = 157943546084487380826414246098120728083518984490589260511641600322468441572516109842423711427686712505002808420071237272674271448054275659287777965163232071527998350402965136467605062036402892095263148134431581456621289696744380988204142724118626860150796837097424130143024540921052406066044537910089639092061 
+    
+    q = 97868102893647636750994818826681149823286080701893685849010160194907502256908466844463725240940719716080445311592705607090817303793192505608476123659206462936241636165257632443791832590587874699373251875811205386903876644157161333847642128083720419289937995326648385497612527827677475438398546671634009308623 
+    
+    N = 15457635219584188302906342655303964278020771614199585969816297574343924310993516295059469520825004548582564409843511416475108196992320922585319494666952299299900244594062545314886090854062996506718969598825989604381629505799744415577095323791280851428259398722206884112298077806244632537688679342648031782269272539218492963470692632409923027963767964551136718138061032164192326094026917737659691974603185822346244622073164471923460481094029196405997976694625433839674156965613837991179918985883691199921653007581687255607316055670375321682444702668995247711218910677541182045377624461886020026151819495644188058142003 
+    
+    d1 = 1729133842483701669756218369210524257204835202594041826409124743332490268033797914037866619729965816628303771662621217914873 
+    
+    p1 = 157943546084487380826414246098120728083518984490589260511641600322468441572516109842423711427686712505002808420071237272674271448054275659287777965163232071527998350402965136467605062036402892095263148134431581456621289696744380988204142724118626860150796837097424130143024540921052406066044537910089639092061 
+    
+    q1 = 97868102893647636750994818826681149823286080701893685849010160194907502256908466844463725240940719716080445311592705607090817303793192505608476123659206462936241636165257632443791832590587874699373251875811205386903876644157161333847642128083720419289937995326648385497612527827677475438398546671634009308623 
+    
+    d==d1 : True
+    delta = 0.250000000000000 et m = 3
+    d = 12708455964774881128921266262286604918112103523750954107835797543074307314769824673367614147464206859692499281873160523714005698771479115314470412504530943 
+    
+    p = 157579454172899583113159587451527055276589939008603509288229641720841780313382848035348840217791948525179254693437588175131970570583138175749517008065211667964037877054757688585294465571452022285046028080596956222496740758818662876406262581897161285747681489165713666038438794984536051347821369273629144256787 
+    
+    q = 165528035886689587231026748152908972922955402888940337988051341189856489996491616088426591264919310800685730501359111495034548038875078181804580622242711085776980842918847172996120869572434363121851161025232641457148952713571632938061988513752443128662851765337674482653949909354797970918647197813367178834589 
+    
+    N = 26083817545336679421699315968616912980282190887567231668471273557291382070133588989271652070872940792825411424833145344508122236818803192711643972263701029526571594792514892956376824895382340580778306067901281809382688861128261689834163651116249655302678513125799894230696247851331593689076634412362379651729259777395858851932654487651074621746524707307491137625484527364810027902082062985020448005970931580136932578081465903149662954453146321715161308637828701225170227637993292131861685535855239597886222959851967145430388512921177543984285408398889056908736452481692880483136328839047843910561419445623413213605543 
+    
+    d1 = 12708455964774881128921266262286604918112103523750954107835797543074307314769824673367614147464206859692499281873160523714005698771479115314470412504530943 
+    
+    p1 = 165528035886689587231026748152908972922955402888940337988051341189856489996491616088426591264919310800685730501359111495034548038875078181804580622242711085776980842918847172996120869572434363121851161025232641457148952713571632938061988513752443128662851765337674482653949909354797970918647197813367178834589 
+    
+    q1 = 157579454172899583113159587451527055276589939008603509288229641720841780313382848035348840217791948525179254693437588175131970570583138175749517008065211667964037877054757688585294465571452022285046028080596956222496740758818662876406262581897161285747681489165713666038438794984536051347821369273629144256787 
+    
+
+
+
+```python
+N = 81696444244513538073704707272071041918317230495424055812164786923896590053255812486077250815147176795047930417897593258309407369160605030302253399674036178495765565095529290552281613672421833687636453170985722795170169765680033125189131706522937260495055972644066935183370437322153857291716426596091516750941
+e = 65406798359575895817829578282574008851694184641717867529650982286701537784231919723380557594092765882222630364513517313999653398573486787123009358628713010573408707904566681156861599121685687280486994084801299018540971786891342381752050629023145408991153812971869770790997021034110047212914601123544279540917
+
+```
+
+
+```python
+
+```
